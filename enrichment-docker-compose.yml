@@ -1,0 +1,48 @@
+services:
+  connector-yara:
+    image: opencti/connector-yara:latest
+    environment:
+      - OPENCTI_URL=${OPENCTI_BASE_URL}
+      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
+      - CONNECTOR_ID=${ENRICHMENT_CONNECTOR_YARA_ID}
+      - CONNECTOR_NAME=YARA
+      - CONNECTOR_SCOPE=Artifact # MIME type or Stix Object
+      - CONNECTOR_AUTO=true
+      - CONNECTOR_LOG_LEVEL=error
+      - YARA_TLP_LEVEL=clear
+    restart: always
+
+  connector-shodan:
+    image: opencti/connector-shodan:latest
+    environment:
+      - OPENCTI_URL=${OPENCTI_BASE_URL}
+      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
+      - CONNECTOR_ID=${ENRICHMENT_CONNECTOR_SHODAN_ID}
+      - CONNECTOR_NAME=Shodan # Optional (default: 'Shodan')
+      - CONNECTOR_SCOPE=ipv4-addr,indicator # Optional (default: ['ipv4-addr', 'indicator'])
+      - CONNECTOR_AUTO=true # Optional (default: false)
+      - CONNECTOR_LOG_LEVEL=info # Optional (default: error)
+      - SHODAN_TOKEN=${SHODAN_API}
+      #- SHODAN_MAX_TLP=TLP:AMBER # Optional (default: 'TLP:AMBER')
+      #- SHODAN_DEFAULT_SCORE=50 # Optional (default: 50)
+      #- SHODAN_IMPORT_SEARCH_RESULTS=true # Optional (default: true)
+      #- SHODAN_CREATE_NOTE=true # Optional (default: true)
+      #- SHODAN_USE_ISP_NAME_FOR_ASN=false # Optional (default: false)
+    restart: always
+
+  connector-hygiene:
+    image: opencti/connector-hygiene:latest
+    environment:
+      - OPENCTI_URL=${OPENCTI_BASE_URL}
+      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
+      - CONNECTOR_ID=${ENRICHMENT_CONNECTOR_HYGIENE_ID}
+      - HYGIENE_MAX_WORKERS=100 # Number of parallel workers (default: 100)
+    restart: always
+
+  connector-google-dns:
+    image: opencti/connector-google-dns:latest
+    environment:
+      - OPENCTI_URL=${OPENCTI_BASE_URL}
+      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
+      - CONNECTOR_ID=${ENRICHMENT_CONNECTOR_GOOGLE_DNS_ID}
+    restart: always

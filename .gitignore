@@ -1,0 +1,17 @@
+.DS_Store
+.claude/
+
+# Local environment and secret material
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# Local editor and runtime noise
+.idea/
+.vscode/
+*.log
+tmp/
+temp/
