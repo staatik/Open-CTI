@@ -1,6 +1,6 @@
 # OpenCTI: core, feeds and enrichment
 
-Fresh deployment configuration based on [Filigran's Docker helpers](https://github.com/OpenCTI-Platform/docker/tree/10b23d4da56cafcd1b1d20904bb048011fc1ffcf), retaining the connector choices from [staatik/Open-CTI](https://github.com/staatik/Open-CTI). OpenCTI, workers and connectors are pinned to **7.261002.0**, the latest published release checked on **2026-10-08**. See [sources and changes](docs/SOURCES.md).
+Fresh deployment configuration based on [Filigran's Docker helpers](https://github.com/OpenCTI-Platform/docker/tree/10b23d4da56cafcd1b1d20904bb048011fc1ffcf), retaining the original connector choices from this repo [staatik/Open-CTI](https://github.com/staatik/Open-CTI). OpenCTI, workers and connectors are pinned to **7.261002.0**, the latest published release checked on **2026-10-08**. See [sources and changes](docs/SOURCES.md).
 
 The three main files are **independent Compose projects** on one shared Docker network. Start the core first, then selected feeds and enrichments. Stopping a feed project does not stop the platform. All 35 previously active connectors are retained; Attribution Tools moves to the enrichment file. CVE and SPARTA are additional opt-in connectors.
 
