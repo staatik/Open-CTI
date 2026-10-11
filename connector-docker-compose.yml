@@ -1,415 +1,432 @@
+# Standalone feed project. Requires the network and healthy API created by core.
+# All feeds are opt-in: target a service, its profile, or --profile feeds-public.
+# Do not merge this file with core using multiple -f arguments.
+name: "${OPENCTI_STACK_NAME:-opencti-fresh}-feeds"
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
 services:
   connector-redflag-domains:
-    image: opencti/connector-red-flag-domains:latest
+    image: opencti/connector-red-flag-domains:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_29}
-      - CONNECTOR_NAME=Red Flag Domains
-      - CONNECTOR_SCOPE=red-flag-domains
-      - CONNECTOR_LOG_LEVEL=info
-      - REDFLAGDOMAINS_URL=https://dl.red.flag.domains/daily/
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_REDFLAG_DOMAINS_ID}"
+      CONNECTOR_NAME: Red Flag Domains
+      CONNECTOR_SCOPE: red-flag-domains
+      CONNECTOR_LOG_LEVEL: info
+      REDFLAGDOMAINS_URL: https://dl.red.flag.domains/daily/
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - redflag-domains
+    - feeds-public
   connector-wiz:
-    image: opencti/connector-wiz:latest
+    image: opencti/connector-wiz:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_30}
-      # Connector's generic execution parameters
-      - CONNECTOR_NAME=Wiz Cloud Threat LandScape
-      - CONNECTOR_SCOPE=wiz
-      - CONNECTOR_LOG_LEVEL=info
-      - CONNECTOR_DURATION_PERIOD=P1D # ISO8601 format in String, start with 'P...' for Period
-      - WIZ_THREAT_ACTOR_AS_INTRUSION_SET=True
-      - WIZ_TLP_LEVEL=clear
-    restart: always
-
-  connector-attribution-tools:
-    image: opencti/connector-attribution-tools:latest
-    environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_31}
-      - CONNECTOR_NAME=attribution-tools
-      - CONNECTOR_SCOPE=Incident
-      - CONNECTOR_AUTO=false
-      - CONNECTOR_LOG_LEVEL=info
-      - ATTRIBUTIONTOOLS_MODEL_TRAINING_CRON_UTC=0 0 * * *
-      - ATTRIBUTIONTOOLS_N_TRAINING_QUERY_THREADS=1
-      - ATTRIBUTIONTOOLS_DEFAULT_RELATION_CONFIDENCE=50
-      - ATTRIBUTIONTOOLS_AUTOMATIC_RELATION_CREATION=true
-      - ATTRIBUTIONTOOLS_RELATION_CREATION_PROBABILITY_TRESHOLD=0.95
-      - ATTRIBUTIONTOOLS_CREATOR_ORG_IDENTITY_ID=${ATTRIBUTIONTOOLS_CREATOR_ORG_IDENTITY_ID}
-    volumes:
-      - attribution_tools_data:/opt/opencti-connector-attribution-tools/data/training_data
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_WIZ_ID}"
+      CONNECTOR_NAME: Wiz Cloud Threat LandScape
+      CONNECTOR_SCOPE: wiz
+      CONNECTOR_LOG_LEVEL: info
+      CONNECTOR_DURATION_PERIOD: P1D
+      WIZ_THREAT_ACTOR_AS_INTRUSION_SET: 'True'
+      WIZ_TLP_LEVEL: clear
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - wiz
+    - feeds-public
   connector-alienvault:
-    image: opencti/connector-alienvault:latest
+    image: opencti/connector-alienvault:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_32}
-      - CONNECTOR_NAME=AlienVault  # Optional (default: AlienVault)
-      - CONNECTOR_SCOPE=alienvault  # Optional (default: alienvault)
-      - CONNECTOR_LOG_LEVEL=info  # Optional (default: error)
-      - CONNECTOR_DURATION_PERIOD=PT30M  # Optional (default: PT30M) - ISO8601 Format starting with "P" for Period ex: "PT30M" = Period time of 30 minutes
-      - ALIENVAULT_BASE_URL=https://otx.alienvault.com  # Optional (default: https://otx.alienvault.com)
-      - ALIENVAULT_API_KEY=${ALIENVAULT_API_KEY} # Required
-      - ALIENVAULT_TLP=White  # Optional (default: White)
-      - ALIENVAULT_CREATE_OBSERVABLES=true  # Optional (default: true)
-      - ALIENVAULT_CREATE_INDICATORS=true  # Optional (default: true)
-      - ALIENVAULT_PULSE_START_TIMESTAMP=${ALIENVAULT_PULSE_START_TIMESTAMP}
-      - ALIENVAULT_REPORT_TYPE=threat-report  # Optional (default: threat-report)
-      - ALIENVAULT_REPORT_STATUS=New  # Optional (default: New) - New, In progress, Analyzed and Closed
-      - ALIENVAULT_GUESS_MALWARE=true  # Optional (default: false) - Use tags to guess malware
-      - ALIENVAULT_GUESS_CVE=true  # Optional (default: false) - Use tags to guess CVE
-      - ALIENVAULT_EXCLUDED_PULSE_INDICATOR_TYPES=FileHash-MD5,FileHash-SHA1  # Optional (default: "") - Comma-separated list of Pulse indicator types to exclude
-      - ALIENVAULT_ENABLE_RELATIONSHIPS=true  # Optional (default: true) - Enable/Disable relationship creation between SDOs
-      - ALIENVAULT_ENABLE_ATTACK_PATTERNS_INDICATES=true  # Optional (default: true) - Enable/Disable "indicates" relationships between indicators and attack patterns
-      - ALIENVAULT_FILTER_INDICATORS=false  # Optional (default: false) - Filter indicators by their created datetime
-      - ALIENVAULT_DEFAULT_X_OPENCTI_SCORE=50  # Optional (default: 50) - The default x_opencti_score to use for indicators
-      - ALIENVAULT_X_OPENCTI_SCORE_IP=60  # Optional (default: uses default_x_opencti_score) - The x_opencti_score to use for IP indicators
-      - ALIENVAULT_X_OPENCTI_SCORE_DOMAIN=70  # Optional (default: uses default_x_opencti_score) - The x_opencti_score to use for Domain indicators
-      - ALIENVAULT_X_OPENCTI_SCORE_HOSTNAME=75  # Optional (default: uses default_x_opencti_score) - The x_opencti_score to use for Hostname indicators
-      - ALIENVAULT_X_OPENCTI_SCORE_EMAIL=70  # Optional (default: uses default_x_opencti_score) - The x_opencti_score to use for Email indicators
-      - ALIENVAULT_X_OPENCTI_SCORE_FILE=80  # Optional (default: uses default_x_opencti_score) - The x_opencti_score to use for StixFile indicators
-      - ALIENVAULT_X_OPENCTI_SCORE_URL=80  # Optional (default: uses default_x_opencti_score) - The x_opencti_score to use for URL indicators
-      - ALIENVAULT_X_OPENCTI_SCORE_MUTEX=60  # Optional (default: uses default_x_opencti_score) - The x_opencti_score to use for Mutex indicators
-      - ALIENVAULT_X_OPENCTI_SCORE_CRYPTOCURRENCY_WALLET=80  # Optional (default: uses default_x_opencti_score) - The x_opencti_score to use for Cryptocurrency Wallet indicators
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_ALIENVAULT_ID}"
+      CONNECTOR_NAME: AlienVault
+      CONNECTOR_SCOPE: alienvault
+      CONNECTOR_LOG_LEVEL: info
+      CONNECTOR_DURATION_PERIOD: PT30M
+      ALIENVAULT_BASE_URL: https://otx.alienvault.com
+      ALIENVAULT_API_KEY: "${ALIENVAULT_API_KEY:-}"
+      ALIENVAULT_TLP: White
+      ALIENVAULT_CREATE_OBSERVABLES: 'true'
+      ALIENVAULT_CREATE_INDICATORS: 'true'
+      ALIENVAULT_PULSE_START_TIMESTAMP: "${ALIENVAULT_PULSE_START_TIMESTAMP:-2026-10-01T00:00:00}"
+      ALIENVAULT_REPORT_TYPE: threat-report
+      ALIENVAULT_REPORT_STATUS: New
+      ALIENVAULT_GUESS_MALWARE: 'true'
+      ALIENVAULT_GUESS_CVE: 'true'
+      ALIENVAULT_EXCLUDED_PULSE_INDICATOR_TYPES: FileHash-MD5,FileHash-SHA1
+      ALIENVAULT_ENABLE_RELATIONSHIPS: 'true'
+      ALIENVAULT_ENABLE_ATTACK_PATTERNS_INDICATES: 'true'
+      ALIENVAULT_FILTER_INDICATORS: 'false'
+      ALIENVAULT_DEFAULT_X_OPENCTI_SCORE: '50'
+      ALIENVAULT_X_OPENCTI_SCORE_IP: '60'
+      ALIENVAULT_X_OPENCTI_SCORE_DOMAIN: '70'
+      ALIENVAULT_X_OPENCTI_SCORE_HOSTNAME: '75'
+      ALIENVAULT_X_OPENCTI_SCORE_EMAIL: '70'
+      ALIENVAULT_X_OPENCTI_SCORE_FILE: '80'
+      ALIENVAULT_X_OPENCTI_SCORE_URL: '80'
+      ALIENVAULT_X_OPENCTI_SCORE_MUTEX: '60'
+      ALIENVAULT_X_OPENCTI_SCORE_CRYPTOCURRENCY_WALLET: '80'
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - alienvault
   connector-cisa-known-exploited-vulnerabilities:
-    image: opencti/connector-cisa-known-exploited-vulnerabilities:latest
+    image: opencti/connector-cisa-known-exploited-vulnerabilities:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_33}
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_CISA_KNOWN_EXPLOITED_VULNERABILITIES_ID}"
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - cisa-known-exploited-vulnerabilities
+    - feeds-public
   connector-crowdsec-import:
-    image: opencti/connector-crowdsec-import:latest
+    image: opencti/connector-crowdsec-import:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      # Connector's generic execution parameters
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      # Connector's definition parameters REQUIRED
-      - CONNECTOR_ID=${UUID_34}  # Add CrowdSec connector ID (any valid UUID v4)
-      - CONNECTOR_UPDATE_EXISTING_DATA=false
-      - CONNECTOR_NAME=CrowdSec Import
-      - CONNECTOR_SCOPE=IPv4-Addr,IPv6-Addr # MIME type or Stix Object
-      - CONNECTOR_CONFIDENCE_LEVEL=100 # From 0 (Unknown) to 100 (Fully trusted)
-      - CONNECTOR_LOG_LEVEL=info
-      - CONNECTOR_DURATION_PERIOD=P1D # ISO8601 format in String, start with 'P...' for Period
-      # Connector's definition parameters OPTIONAL
-      # - CONNECTOR_QUEUE_THRESHOLD=500 # Default 500Mo, Float accepted
-      # - CONNECTOR_RUN_AND_TERMINATE=False # Default False, True run connector once
-      # - CONNECTOR_SEND_TO_QUEUE=True # Default True
-      # - CONNECTOR_SEND_TO_DIRECTORY=False # Default False
-      # - CONNECTOR_SEND_TO_DIRECTORY_PATH=ChangeMe # if CONNECTOR_SEND_TO_DIRECTORY is True, you must specify a path
-      # - CONNECTOR_SEND_TO_DIRECTORY_RETENTION=7 # Default 7, in days
-      # CrowdSec Connector's custom execution parameters REQUIRED
-      - CROWDSEC_KEY=${CROWDSEC_KEY} # Add CrowdSec's CTI API Key
-      # CrowdSec Connector's custom execution parameters OPTIONAL
-      - CROWDSEC_IMPORT_QUERY=behaviors.label:"SSH Bruteforce" # Lucene Query to filter CrowdSec data for import
-      - CROWDSEC_IMPORT_QUERY_SINCE=24 # Range in hours of fetched CrowdSec data. Default is 24 hours.
-      - CROWDSEC_ENRICHMENT_THRESHOLD_PER_IMPORT=2000 # Maximum number of IP addresses to enrich in one import
-      - CROWDSEC_MAX_TLP=TLP:AMBER # Do not send any data to CrowdSec if the TLP of the observable is greater than this
-      - CROWDSEC_TLP_LEVEL=amber # TLP for created STIX objects (clear, white, green, amber, amber+strict, red)
-      - CROWDSEC_CREATE_NOTE=true # Enable/disable creation of a note in observable for each enrichment
-      - CROWDSEC_CREATE_SIGHTING=true # Enable/disable creation of a sighting of observable related to CrowdSec organization
-      - CROWDSEC_VULNERABILITY_CREATE_FROM_CVE=true # Create vulnerability from CVE
-      # - CROWDSEC_MIN_DELAY_BETWEEN_ENRICHMENTS=86400 # Minimum delay (in seconds) between two CrowdSec enrichments
-      # - CROWDSEC_LAST_ENRICHMENT_DATE_IN_DESCRIPTION=true # Enable/disable saving the last CrowdSec enrichment date in observable description
-      - CROWDSEC_CREATE_TARGETED_COUNTRIES_SIGHTINGS=false # Enable/disable creation of a sighting of observable related to a targeted country
-      - CROWDSEC_INDICATOR_CREATE_FROM=malicious,suspicious,known # List of reputations to create indicators from (malicious, suspicious, known, safe) separated by comma
-      - CROWDSEC_ATTACK_PATTERN_CREATE_FROM_MITRE=true # Create attack patterns from MITRE techniques
-      # Label Configuration
-      # - CROWDSEC_LABELS_SCENARIO_NAME=true # Enable/disable labels creation based on CTI scenario's name
-      # - CROWDSEC_LABELS_SCENARIO_LABEL=false # Enable/disable labels creation based on CTI scenario's label
-      # - CROWDSEC_LABELS_CVE=true # Enable/Disable CTI cve name based labels
-      # - CROWDSEC_LABELS_MITRE=true # Enable/Disable CTI mitre technique based labels
-      # - CROWDSEC_LABELS_BEHAVIOR=false # Enable/Disable CTI behavior based labels
-      # - CROWDSEC_LABELS_REPUTATION=true # Enable/Disable CTI reputation based labels
-      # Label Colors
-      # - CROWDSEC_LABELS_SCENARIO_COLOR=#2E2A14 # Color of scenario based labels
-      # - CROWDSEC_LABELS_CVE_COLOR=#800080 # Color of cve based labels
-      # - CROWDSEC_LABELS_MITRE_COLOR=#000080 # Color of mitre technique based labels
-      # - CROWDSEC_LABELS_BEHAVIOR_COLOR=#808000 # Color of behavior based labels
-      # - CROWDSEC_LABELS_REPUTATION_MALICIOUS_COLOR=#FF0000 # Color of malicious reputation label
-      # - CROWDSEC_LABELS_REPUTATION_SUSPICIOUS_COLOR=#FFA500 # Color of suspicious reputation label
-      # - CROWDSEC_LABELS_REPUTATION_KNOWN_COLOR=#808080 # Color of known reputation label
-      # - CROWDSEC_LABELS_REPUTATION_SAFE_COLOR=#00BFFF # Color of safe reputation label
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_CROWDSEC_IMPORT_ID}"
+      CONNECTOR_UPDATE_EXISTING_DATA: 'false'
+      CONNECTOR_NAME: CrowdSec Import
+      CONNECTOR_SCOPE: IPv4-Addr,IPv6-Addr
+      CONNECTOR_CONFIDENCE_LEVEL: '100'
+      CONNECTOR_LOG_LEVEL: info
+      CONNECTOR_DURATION_PERIOD: P1D
+      CROWDSEC_KEY: "${CROWDSEC_KEY:-}"
+      CROWDSEC_IMPORT_QUERY: behaviors.label:"SSH Bruteforce"
+      CROWDSEC_IMPORT_QUERY_SINCE: '24'
+      CROWDSEC_ENRICHMENT_THRESHOLD_PER_IMPORT: '2000'
+      CROWDSEC_MAX_TLP: TLP:AMBER
+      CROWDSEC_TLP_LEVEL: amber
+      CROWDSEC_CREATE_NOTE: 'true'
+      CROWDSEC_CREATE_SIGHTING: 'true'
+      CROWDSEC_VULNERABILITY_CREATE_FROM_CVE: 'true'
+      CROWDSEC_CREATE_TARGETED_COUNTRIES_SIGHTINGS: 'false'
+      CROWDSEC_INDICATOR_CREATE_FROM: malicious,suspicious,known
+      CROWDSEC_ATTACK_PATTERN_CREATE_FROM_MITRE: 'true'
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - crowdsec-import
   connector-cyber-campaign-collection:
-    image: opencti/connector-cyber-campaign-collection:latest
+    image: opencti/connector-cyber-campaign-collection:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_35}
-      - "CONNECTOR_NAME=APT & Cybercriminals Campaign Collection"
-      - CONNECTOR_SCOPE=cyber-monitor
-      - CYBER_CAMPAIGN_COLLECTION_IMPORT_HISTORY=false
-      - CONNECTOR_RUN_AND_TERMINATE=false
-      - CONNECTOR_LOG_LEVEL=info
-      - CYBER_MONITOR_GITHUB_TOKEN=${CYBER_MONITOR_GITHUB_TOKEN}
-      - CYBER_MONITOR_FROM_YEAR=2018
-      - CYBER_MONITOR_INTERVAL=4 # In days, must be strictly greater than 1
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_CYBER_CAMPAIGN_COLLECTION_ID}"
+      CONNECTOR_NAME: APT & Cybercriminals Campaign Collection
+      CONNECTOR_SCOPE: report
+      CONNECTOR_RUN_AND_TERMINATE: 'false'
+      CONNECTOR_LOG_LEVEL: info
+      CYBER_MONITOR_GITHUB_TOKEN: "${CYBER_MONITOR_GITHUB_TOKEN:-}"
+      CYBER_MONITOR_FROM_YEAR: "${CYBER_MONITOR_FROM_YEAR:-2026}"
+      CYBER_MONITOR_INTERVAL: '4'
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - cyber-campaign-collection
   connector-disarm-framework:
-    image: opencti/connector-disarm-framework:latest
+    image: opencti/connector-disarm-framework:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_36}
-      - "CONNECTOR_NAME=DISARM Framework"
-      - CONNECTOR_SCOPE=marking-definition,identity,attack-pattern,course-of-action,intrusion-set,campaign,malware,tool,report,narrative,event,channel
-      - CONNECTOR_RUN_AND_TERMINATE=false
-      - CONNECTOR_LOG_LEVEL=info
-      - DISARM_FRAMEWORK_URL=https://raw.githubusercontent.com/DISARMFoundation/DISARMframeworks/main/generated_files/DISARM_STIX/DISARM.json
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_DISARM_FRAMEWORK_ID}"
+      CONNECTOR_NAME: DISARM Framework
+      CONNECTOR_SCOPE: marking-definition,identity,attack-pattern,course-of-action,intrusion-set,campaign,malware,tool,report,narrative,event,channel
+      CONNECTOR_RUN_AND_TERMINATE: 'false'
+      CONNECTOR_LOG_LEVEL: info
+      DISARM_FRAMEWORK_URL: https://raw.githubusercontent.com/DISARMFoundation/DISARMframeworks/main/generated_files/DISARM_STIX/DISARM.json
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - disarm-framework
+    - feeds-public
   connector-dshield:
-    image: opencti/connector-dshield:latest
+    image: opencti/connector-dshield:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      # Connector's generic execution parameters
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      # Connector's definition parameters REQUIRED
-      - CONNECTOR_ID=${UUID_37}
-      - CONNECTOR_NAME=dshield
-      - CONNECTOR_SCOPE=dshield
-      - CONNECTOR_LOG_LEVEL=info
-      - CONNECTOR_DURATION_PERIOD=P1D # ISO8601 format in String, start with 'P...' for Period
-      # Connector's definition parameters OPTIONAL
-      # - CONNECTOR_QUEUE_THRESHOLD=500 # Default 500Mo, Float accepted
-      # - CONNECTOR_RUN_AND_TERMINATE=False # Default False, True run connector once
-      # - CONNECTOR_SEND_TO_QUEUE=True # Default True
-      # - CONNECTOR_SEND_TO_DIRECTORY=False # Default False 
-      # - CONNECTOR_SEND_TO_DIRECTORY_PATH=ChangeMe # if CONNECTOR_SEND_TO_DIRECTORY is True, you must specify a path
-      # - CONNECTOR_SEND_TO_DIRECTORY_RETENTION=7 # Default 7, in days
-      # Connector's custom execution parameters
-      - DSHIELD_API_BASE_URL=https://feeds.dshield.org/block.txt # alternative: https://isc.sans.edu/block.txt
-      - DSHIELD_TLP_LEVEL=CLEAR # available values are: clear, white, green, amber, amber+strict, red - Default: 'clear'
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_DSHIELD_ID}"
+      CONNECTOR_NAME: dshield
+      CONNECTOR_SCOPE: dshield
+      CONNECTOR_LOG_LEVEL: info
+      CONNECTOR_DURATION_PERIOD: P1D
+      DSHIELD_API_BASE_URL: https://feeds.dshield.org/block.txt
+      DSHIELD_TLP_LEVEL: CLEAR
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - dshield
+    - feeds-public
   connector-mitre-atlas:
-    image: opencti/connector-mitre-atlas:latest
+    image: opencti/connector-mitre-atlas:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_38}
-      - CONNECTOR_NAME=MITRE ATLAS
-      - CONNECTOR_SCOPE=identity,attack-pattern,course-of-action,relationship,x-mitre-collection,x-mitre-matrix,x-mitre-tactic
-      - CONNECTOR_LOG_LEVEL=info
-      - CONNECTOR_DURATION_PERIOD=P7D
-      - MITRE_ATLAS_URL=https://raw.githubusercontent.com/mitre-atlas/atlas-navigator-data/main/dist/stix-atlas.json
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_MITRE_ATLAS_ID}"
+      CONNECTOR_NAME: MITRE ATLAS
+      CONNECTOR_SCOPE: identity,attack-pattern,course-of-action,relationship,x-mitre-collection,x-mitre-matrix,x-mitre-tactic
+      CONNECTOR_LOG_LEVEL: info
+      CONNECTOR_DURATION_PERIOD: P7D
+      MITRE_ATLAS_URL: https://raw.githubusercontent.com/mitre-atlas/atlas-navigator-data/main/dist/stix-atlas.json
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - mitre-atlas
+    - feeds-public
   connector-promptintel:
-    image: opencti/connector-promptintel:latest
+    image: opencti/connector-promptintel:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      # OpenCTI
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      # Connector
-      - CONNECTOR_ID=${UUID_39}
-      - CONNECTOR_NAME=PromptIntel
-      - CONNECTOR_SCOPE=promptintel
-      - CONNECTOR_LOG_LEVEL=info
-      - CONNECTOR_DURATION_PERIOD=PT1H # ISO-8601 format
-      # PromptIntel
-      - PROMPTINTEL_API_URL=https://api.promptintel.novahunting.ai/api/v1
-      - PROMPTINTEL_API_KEY=${PROMPTINTEL_API_KEY}
-      - PROMPTINTEL_TLP_LEVEL=clear
-      - PROMPTINTEL_SEVERITY_FILTER=
-      - PROMPTINTEL_CATEGORY_FILTER=
-      - PROMPTINTEL_IMPORT_START_LIMIT=5000
-      - PROMPTINTEL_IMPORT_LIMIT=1000
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_PROMPTINTEL_ID}"
+      CONNECTOR_NAME: PromptIntel
+      CONNECTOR_SCOPE: promptintel
+      CONNECTOR_LOG_LEVEL: info
+      CONNECTOR_DURATION_PERIOD: PT1H
+      PROMPTINTEL_API_URL: https://api.promptintel.novahunting.ai/api/v1
+      PROMPTINTEL_API_KEY: "${PROMPTINTEL_API_KEY:-}"
+      PROMPTINTEL_TLP_LEVEL: clear
+      PROMPTINTEL_SEVERITY_FILTER: ''
+      PROMPTINTEL_CATEGORY_FILTER: ''
+      PROMPTINTEL_IMPORT_START_LIMIT: '5000'
+      PROMPTINTEL_IMPORT_LIMIT: '1000'
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - promptintel
   connector-malpedia:
-    image: opencti/connector-malpedia:latest
+    image: opencti/connector-malpedia:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_40}
-      - CONNECTOR_NAME=Malpedia # Optional (default: 'Malpedia')
-      - CONNECTOR_SCOPE=malpedia # Optional (default: ['malpedia'])
-      - CONNECTOR_LOG_LEVEL=info # Optional (default: 'error')
-      - CONNECTOR_DURATION_PERIOD=PT24H # Optional (default: 24 hours)
-      - MALPEDIA_AUTH_KEY=${MALPEDIA_AUTH_KEY} # Optional (default: none)
-      - MALPEDIA_IMPORT_INTRUSION_SETS=true # Optional (default: true)
-      - MALPEDIA_IMPORT_YARA=true # Optional (default: true)
-      - MALPEDIA_CREATE_INDICATORS=true # Optional (default: true)
-      - MALPEDIA_CREATE_OBSERVABLES=true # Optional (default: true)
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_MALPEDIA_ID}"
+      CONNECTOR_NAME: Malpedia
+      CONNECTOR_SCOPE: malpedia
+      CONNECTOR_LOG_LEVEL: info
+      CONNECTOR_DURATION_PERIOD: PT24H
+      MALPEDIA_AUTH_KEY: "${MALPEDIA_AUTH_KEY:-}"
+      MALPEDIA_IMPORT_INTRUSION_SETS: 'true'
+      MALPEDIA_IMPORT_YARA: 'true'
+      MALPEDIA_CREATE_INDICATORS: 'true'
+      MALPEDIA_CREATE_OBSERVABLES: 'true'
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - malpedia
   connector-malwarebazaar:
-    image: opencti/connector-malwarebazaar:latest
+    image: opencti/connector-malwarebazaar:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_41}
-      - CONNECTOR_NAME=MalwareBazaar
-      - CONNECTOR_SCOPE=StixFile
-      - CONNECTOR_LOG_LEVEL=info
-      - CONNECTOR_DURATION_PERIOD=PT50M
-      - MALWAREBAZAAR_API_BASE_URL=https://mb-api.abuse.ch/api/v1/
-      - MALWAREBAZAAR_API_KEY=${MALWAREBAZAAR_API_KEY}
-      - MALWAREBAZAAR_TLP_LEVEL=clear
-      - MALWAREBAZAAR_X_OPENCTI_SCORE=100
-      - MALWAREBAZAAR_INCLUDE_TAGS=exe,dll,docm,docx,doc,xls,xlsx,xlsm,js
-      - MALWAREBAZAAR_INCLUDE_REPORTERS=
-      - MALWAREBAZAAR_LABELS=malware-bazaar
-    restart: always
-  
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_MALWAREBAZAAR_ID}"
+      CONNECTOR_NAME: MalwareBazaar
+      CONNECTOR_SCOPE: StixFile
+      CONNECTOR_LOG_LEVEL: info
+      CONNECTOR_DURATION_PERIOD: PT50M
+      MALWAREBAZAAR_API_BASE_URL: https://mb-api.abuse.ch/api/v1/
+      MALWAREBAZAAR_API_KEY: "${MALWAREBAZAAR_API_KEY:-}"
+      MALWAREBAZAAR_TLP_LEVEL: clear
+      MALWAREBAZAAR_X_OPENCTI_SCORE: '100'
+      MALWAREBAZAAR_INCLUDE_TAGS: exe,dll,docm,docx,doc,xls,xlsx,xlsm,js
+      MALWAREBAZAAR_INCLUDE_REPORTERS: ''
+      MALWAREBAZAAR_LABELS: malware-bazaar
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - malwarebazaar
   connector-ransomwarelive:
-    image: opencti/connector-ransomwarelive:latest
+    image: opencti/connector-ransomwarelive:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_42}
-      - CONNECTOR_NAME=RansomwareLive
-      - CONNECTOR_SCOPE=ransomwarelive
-      - CONNECTOR_LOG_LEVEL=info
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_RANSOMWARELIVE_ID}"
+      CONNECTOR_NAME: RansomwareLive
+      CONNECTOR_SCOPE: identity,domain-name,location,threat-actor,intrusion-set,campaign,report,relationship
+      CONNECTOR_LOG_LEVEL: info
+      CONNECTOR_DURATION_PERIOD: PT12H
+      RANSOMWARELIVE_API_BASE_URL: "${RANSOMWARELIVE_API_BASE_URL:-https://api-pro.ransomware.live}"
+      RANSOMWARELIVE_API_KEY: "${RANSOMWARELIVE_API_KEY:-}"
+      RANSOMWARELIVE_CREATE_THREAT_ACTOR: 'false'
+      RANSOMWARELIVE_CREATE_INTRUSION_SET: 'true'
+      RANSOMWARELIVE_CREATE_CAMPAIGN: 'false'
+      RANSOMWARELIVE_CREATE_REPORT: 'true'
+      RANSOMWARELIVE_CREATE_LEAK_SITE_DOMAINS: 'false'
+      RANSOMWARELIVE_CREATE_LEAK_POST_REFS: 'false'
+      RANSOMWARELIVE_PULL_HISTORY: 'false'
+      RANSOMWARELIVE_HISTORY_START_YEAR: '2023'
+      RANSOMWARELIVE_MARKING_VALUE: TLP:CLEAR
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - ransomwarelive
   connector-abuse-ssl:
-    image: opencti/connector-abuse-ssl:latest
+    image: opencti/connector-abuse-ssl:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_43}
-      - "CONNECTOR_NAME=Abuse.ch SSL Blacklist"
-      - CONNECTOR_SCOPE=abusessl
-      - CONNECTOR_LOG_LEVEL=info
-      - ABUSESSL_URL=https://sslbl.abuse.ch/blacklist/sslipblacklist.csv
-      - ABUSESSL_INTERVAL=360 # Time to wait in minutes between subsequent requests
-    restart: always
-      
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_ABUSE_SSL_ID}"
+      CONNECTOR_NAME: Abuse.ch SSL Blacklist
+      CONNECTOR_SCOPE: abusessl
+      CONNECTOR_LOG_LEVEL: info
+      ABUSESSL_URL: https://sslbl.abuse.ch/blacklist/sslipblacklist.csv
+      ABUSESSL_INTERVAL: '360'
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - abuse-ssl
+    - feeds-public
   connector-abuseipdb-ipblacklist:
-    image: opencti/connector-abuseipdb-ipblacklist:latest
+    image: opencti/connector-abuseipdb-ipblacklist:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_44}
-      - CONNECTOR_NAME=AbuseIPDB IP Blacklist
-      - CONNECTOR_SCOPE=abuseipdb
-      - CONNECTOR_LOG_LEVEL=info
-      - CONNECTOR_DURATION_PERIOD=PT12H # ISO8601 format in String, start with 'P...' for Period
-      # Connector's custom execution parameters
-      # - ABUSEIPDB_API_URL=https://api.abuseipdb.com/api/v2/blacklist
-      - ABUSEIPDB_API_KEY=${ABUSEIP_API}
-      - ABUSEIPDB_SCORE=50
-      - ABUSEIPDB_LIMIT=5000
-      - ABUSEIPDB_CREATE_INDICATOR=true
-      # - ABUSEIPDB_TLP_LEVEL=clear
-      # - ABUSEIPDB_IPVERSION=mixed
-      # - ABUSEIPDB_EXCEPT_COUNTRY=
-      # - ABUSEIPDB_ONLY_COUNTRY=
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_ABUSEIPDB_IPBLACKLIST_ID}"
+      CONNECTOR_NAME: AbuseIPDB IP Blacklist
+      CONNECTOR_SCOPE: abuseipdb
+      CONNECTOR_LOG_LEVEL: info
+      CONNECTOR_DURATION_PERIOD: PT12H
+      ABUSEIPDB_API_KEY: "${ABUSEIP_API:-}"
+      ABUSEIPDB_SCORE: '50'
+      ABUSEIPDB_LIMIT: '5000'
+      ABUSEIPDB_CREATE_INDICATOR: 'true'
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - abuseipdb-ipblacklist
   connector-urlhaus-recent-payloads:
-    image: opencti/connector-urlhaus-recent-payloads:latest
+    image: opencti/connector-urlhaus-recent-payloads:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_45}
-      - "CONNECTOR_NAME=URLhaus Recent Payloads"
-      - CONNECTOR_LOG_LEVEL=error
-      - URLHAUS_RECENT_PAYLOADS_API_URL=https://urlhaus-api.abuse.ch/v1/
-      - URLHAUS_RECENT_PAYLOADS_API_KEY=${URLHS_API} # Required, issued for free by URLHaus - https://urlhaus-api.abuse.ch/#auth_key
-      - URLHAUS_RECENT_PAYLOADS_COOLDOWN_SECONDS=300 # Time to wait in seconds between subsequent requests
-      - URLHAUS_RECENT_PAYLOADS_INCLUDE_FILETYPES=exe,dll,docm,docx,doc,xls,xlsx,xlsm,js,xll # (Optional) Only download files if any tag matches. (Comma separated)
-      - URLHAUS_RECENT_PAYLOADS_INCLUDE_SIGNATURES= # (Optional) Only download files matching these Yara rules. (Comma separated)
-      - URLHAUS_RECENT_PAYLOADS_SKIP_UNKNOWN_FILETYPES=true # Skip files with an unknown file type
-      - URLHAUS_RECENT_PAYLOADS_SKIP_NULL_SIGNATURE=true # Skip files that didn't match known Yara rules
-      - URLHAUS_RECENT_PAYLOADS_LABELS=urlhaus # (Optional) Labels to apply to uploaded Artifacts. (Comma separated)
-      - URLHAUS_RECENT_PAYLOADS_LABELS_COLOR=#54483b
-      - URLHAUS_RECENT_PAYLOADS_SIGNATURE_LABEL_COLOR=#0059f7 # Color for Yara rule match label
-      - URLHAUS_RECENT_PAYLOADS_FILETYPE_LABEL_COLOR=#54483b # Color to use for filetype label
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_URLHAUS_RECENT_PAYLOADS_ID}"
+      CONNECTOR_NAME: URLhaus Recent Payloads
+      CONNECTOR_LOG_LEVEL: error
+      URLHAUS_RECENT_PAYLOADS_API_URL: https://urlhaus-api.abuse.ch/v1/
+      URLHAUS_RECENT_PAYLOADS_API_KEY: "${URLHS_API:-}"
+      URLHAUS_RECENT_PAYLOADS_COOLDOWN_SECONDS: '300'
+      URLHAUS_RECENT_PAYLOADS_INCLUDE_FILETYPES: exe,dll,docm,docx,doc,xls,xlsx,xlsm,js,xll
+      URLHAUS_RECENT_PAYLOADS_INCLUDE_SIGNATURES: ''
+      URLHAUS_RECENT_PAYLOADS_SKIP_UNKNOWN_FILETYPES: 'true'
+      URLHAUS_RECENT_PAYLOADS_SKIP_NULL_SIGNATURE: 'true'
+      URLHAUS_RECENT_PAYLOADS_LABELS: urlhaus
+      URLHAUS_RECENT_PAYLOADS_LABELS_COLOR: "#54483b"
+      URLHAUS_RECENT_PAYLOADS_SIGNATURE_LABEL_COLOR: "#0059f7"
+      URLHAUS_RECENT_PAYLOADS_FILETYPE_LABEL_COLOR: "#54483b"
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - urlhaus-recent-payloads
   connector-threatfox:
-    image: opencti/connector-threatfox:latest
+    image: opencti/connector-threatfox:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_46}
-      - CONNECTOR_NAME=ThreatFox
-      - CONNECTOR_SCOPE=threatfox
-      - CONNECTOR_LOG_LEVEL=error
-      - THREATFOX_INTERVAL=3 # In days
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_THREATFOX_ID}"
+      CONNECTOR_NAME: ThreatFox
+      CONNECTOR_SCOPE: threatfox
+      CONNECTOR_LOG_LEVEL: error
+      THREATFOX_INTERVAL: '3'
+      THREATFOX_CSV_URL: https://threatfox-api.abuse.ch/v2/files/exports/${THREATFOX_API_KEY:-}/full.csv.zip
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - threatfox
   connector-urlhaus:
-    image: opencti/connector-urlhaus:latest
+    image: opencti/connector-urlhaus:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_47}
-      - CONNECTOR_NAME=Abuse.ch URLhaus
-      - CONNECTOR_SCOPE=urlhaus
-      - CONNECTOR_LOG_LEVEL=error
-      - URLHAUS_INTERVAL=3
-      - URLHAUS_CSV_URL=https://urlhaus.abuse.ch/downloads/csv_recent/
-      - URLHAUS_DEFAULT_X_OPENCTI_SCORE=80 # Optional: Defaults to 80.
-      - URLHAUS_IMPORT_OFFLINE=true
-      - URLHAUS_THREATS_FROM_LABELS=true
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_URLHAUS_ID}"
+      CONNECTOR_NAME: Abuse.ch URLhaus
+      CONNECTOR_SCOPE: urlhaus
+      CONNECTOR_LOG_LEVEL: error
+      URLHAUS_INTERVAL: '3'
+      URLHAUS_CSV_URL: https://urlhaus-api.abuse.ch/v2/files/exports/${URLHS_API:-}/recent.csv
+      URLHAUS_DEFAULT_X_OPENCTI_SCORE: '80'
+      URLHAUS_IMPORT_OFFLINE: 'true'
+      URLHAUS_THREATS_FROM_LABELS: 'true'
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - urlhaus
   connector-vxvault:
-    image: opencti/connector-vxvault:latest
+    image: opencti/connector-vxvault:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_48}
-      - "CONNECTOR_NAME=VX Vault URL list"
-      - CONNECTOR_SCOPE=vxvault
-      - CONNECTOR_LOG_LEVEL=info
-      - CONNECTOR_DURATION_PERIOD=P3D
-      - VXVAULT_URL=https://vxvault.net/URL_List.php
-      - VXVAULT_CREATE_INDICATORS=true
-      - VXVAULT_SSL_VERIFY=${VXVAULT_SSL_VERIFY}
-    restart: always
-
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_VXVAULT_ID}"
+      CONNECTOR_NAME: VX Vault URL list
+      CONNECTOR_SCOPE: vxvault
+      CONNECTOR_LOG_LEVEL: info
+      CONNECTOR_DURATION_PERIOD: P3D
+      VXVAULT_URL: https://vxvault.net/URL_List.php
+      VXVAULT_CREATE_INDICATORS: 'true'
+      VXVAULT_SSL_VERIFY: "${VXVAULT_SSL_VERIFY:-true}"
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - vxvault
+    - feeds-public
   connector-phishunt:
-    image: opencti/connector-phishunt:latest
+    image: opencti/connector-phishunt:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      # Connector's generic execution parameters
-      - OPENCTI_URL=${OPENCTI_BASE_URL}
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${UUID_49}
-      # Connector's definition parameters REQUIRED
-      - CONNECTOR_NAME=Phishunt
-      - CONNECTOR_SCOPE=phishunt
-      - CONNECTOR_LOG_LEVEL=info
-      - CONNECTOR_DURATION_PERIOD=P3D # ISO8601 format in String, start with 'P...' for Period
-      # Connector's custom execution parameters
-      - PHISHUNT_API_KEY=${PHISHUNT_API_KEY}
-      - PHISHUNT_CREATE_INDICATORS=true
-      - PHISHUNT_DEFAULT_X_OPENCTI_SCORE=40 # Optional: default is 40
-      - PHISHUNT_X_OPENCTI_SCORE_DOMAIN=40 # Optional: Default PHISHUNT_DEFAULT_X_OPENCTI_SCORE
-      - PHISHUNT_X_OPENCTI_SCORE_IP=40 # Optional: Default PHISHUNT_DEFAULT_X_OPENCTI_SCORE
-      - PHISHUNT_X_OPENCTI_SCORE_URL=40 # Optional: Default PHISHUNT_DEFAULT_X_OPENCTI_SCORE
-    restart: always
-
-volumes:
-  attribution_tools_data:
-
- #connector-sparta:
- #    image: opencti/connector-sparta:latest
- #    environment:
- #     - OPENCTI_URL=${OPENCTI_BASE_URL}
- #     - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}     
- #     - CONNECTOR_ID=${SPARTA_CONNECTOR_ID}
- #     - CONNECTOR_NAME=Aerospace SPARTA
- #     - CONNECTOR_SCOPE=["attack-pattern", "course-of-action", "indicator", "identity"]
- #     - CONNECTOR_LOG_LEVEL=info
- #     - CONNECTOR_DURATION_PERIOD=PT5H
- #   restart: always
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_PHISHUNT_ID}"
+      CONNECTOR_NAME: Phishunt
+      CONNECTOR_SCOPE: phishunt
+      CONNECTOR_LOG_LEVEL: info
+      CONNECTOR_DURATION_PERIOD: P3D
+      PHISHUNT_API_KEY: "${PHISHUNT_API_KEY:-}"
+      PHISHUNT_CREATE_INDICATORS: 'true'
+      PHISHUNT_DEFAULT_X_OPENCTI_SCORE: '40'
+      PHISHUNT_X_OPENCTI_SCORE_DOMAIN: '40'
+      PHISHUNT_X_OPENCTI_SCORE_IP: '40'
+      PHISHUNT_X_OPENCTI_SCORE_URL: '40'
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - phishunt
+    - feeds-public
+  connector-cve:
+    image: opencti/connector-cve:${OPENCTI_VERSION:-7.261002.0}
+    environment:
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN}"
+      CONNECTOR_ID: "${CONNECTOR_CVE_ID}"
+      CONNECTOR_NAME: Common Vulnerabilities and Exposures
+      CONNECTOR_SCOPE: cve
+      CONNECTOR_LOG_LEVEL: error
+      CVE_API_KEY: "${CVE_API_KEY:-}"
+      CVE_PULL_HISTORY: 'false'
+      CVE_IMPORT_SOFTWARE: 'false'
+      CVE_MAINTAIN_DATA: 'true'
+      CVE_INTERVAL: '2'
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - cve
+  connector-sparta:
+    image: opencti/connector-sparta:${OPENCTI_VERSION:-7.261002.0}
+    environment:
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN}"
+      CONNECTOR_ID: "${CONNECTOR_SPARTA_ID}"
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - sparta
+networks:
+  default:
+    external: true
+    name: "${OPENCTI_STACK_NAME:-opencti-fresh}_default"

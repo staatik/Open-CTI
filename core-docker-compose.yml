@@ -1,47 +1,62 @@
+# Based on Filigran docker commit 10b23d4 (2026-09-29).
+# Start this project first. Optional integration manager: --profile composer.
+# Keep OPENCTI_STACK_NAME identical across all three standalone projects.
+name: "${OPENCTI_STACK_NAME:-opencti-fresh}-core"
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
 services:
-
-  ###########################
-  # DEPENDENCIES            #
-  ###########################
-
-  # Generate RSA key for xtm-composer (PKCS#8 format)
   rsa-key-generator:
     image: alpine/openssl:latest
     volumes:
-      - rsakeys:/keys
-    entrypoint: ["/bin/ash"]
-    command: ["-c", "if [ ! -f /keys/private_key.pem ]; then openssl genpkey -algorithm RSA -out /keys/private_key.pem -pkeyopt rsa_keygen_bits:4096; fi && tail -f /dev/null"]
+    - rsakeys:/keys
+    entrypoint:
+    - "/bin/ash"
+    command:
+    - "-c"
+    - if [ ! -f /keys/private_key.pem ]; then openssl genpkey -algorithm RSA -out /keys/private_key.pem -pkeyopt rsa_keygen_bits:4096; fi && tail -f /dev/null
     healthcheck:
-      test: ["CMD", "test", "-f", "/keys/private_key.pem"]
+      test:
+      - CMD
+      - test
+      - "-f"
+      - "/keys/private_key.pem"
       interval: 10s
       timeout: 5s
       retries: 3
-    restart: always
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - composer
   redis:
-    image: redis:8.6.1
-    restart: always
+    image: redis:${REDIS_VERSION:-8.10.1}
+    restart: unless-stopped
     volumes:
-      - redisdata:/data
+    - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+      - CMD
+      - redis-cli
+      - ping
       interval: 10s
       timeout: 5s
       retries: 3
+    logging: *default-logging
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.12
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTICSEARCH_VERSION:-8.19.21}
     volumes:
-      - esdata:/usr/share/elasticsearch/data
+    - esdata:/usr/share/elasticsearch/data
     environment:
-      # Comment-out the line below for a cluster of multiple nodes
-      - discovery.type=single-node
-      # Uncomment the line below below for a cluster of multiple nodes
-      # - cluster.name=docker-cluster
-      - xpack.ml.enabled=false
-      - xpack.security.enabled=false
-      - thread_pool.search.queue_size=5000
-      - logger.org.elasticsearch.discovery="ERROR"
-      - "ES_JAVA_OPTS=-Xms${ELASTIC_MEMORY_SIZE} -Xmx${ELASTIC_MEMORY_SIZE}"
-    restart: always
+      discovery.type: single-node
+      xpack.ml.enabled: 'false'
+      xpack.security.enabled: 'false'
+      thread_pool.search.queue_size: '5000'
+      logger.org.elasticsearch.discovery: ERROR
+      ES_JAVA_OPTS: "-Xms${ELASTIC_MEMORY_SIZE} -Xmx${ELASTIC_MEMORY_SIZE}"
+    restart: unless-stopped
     ulimits:
       memlock:
         soft: -1
@@ -50,63 +65,66 @@ services:
         soft: 65536
         hard: 65536
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://elasticsearch:9200/_cluster/health?wait_for_status=yellow >/dev/null || exit 1"]
+      test:
+      - CMD-SHELL
+      - curl -fsS "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=2s" >/dev/null || exit 1
       interval: 5s
       timeout: 3s
       retries: 50
+    logging: *default-logging
   minio:
-    image: minio/minio:latest
+    image: "${S3_IMAGE:-pgsty/silo:latest}"
     volumes:
-      - s3data:/data
-    ports:
-      - "9000:9000"
+    - s3data:/data
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}    
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
     command: server /data
-    restart: always
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test:
+      - CMD
+      - mc
+      - ready
+      - local
       interval: 10s
       timeout: 5s
       retries: 3
+    logging: *default-logging
   rabbitmq:
-    image: rabbitmq:4.2-management
+    image: rabbitmq:${RABBITMQ_VERSION:-4.3-management}
     environment:
-      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
-      - RABBITMQ_NODENAME=rabbit01@localhost
+      RABBITMQ_DEFAULT_USER: "${RABBITMQ_DEFAULT_USER}"
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_DEFAULT_PASS}"
+      RABBITMQ_NODENAME: rabbit01@localhost
     volumes:
-      - type: bind
-        source: ./rabbitmq.conf
-        target: /etc/rabbitmq/rabbitmq.conf 
-      - amqpdata:/var/lib/rabbitmq
-    restart: always
+    - type: bind
+      source: "./rabbitmq.conf"
+      target: "/etc/rabbitmq/rabbitmq.conf"
+      read_only: true
+    - amqpdata:/var/lib/rabbitmq
+    restart: unless-stopped
     healthcheck:
       test: rabbitmq-diagnostics -q ping
       interval: 30s
       timeout: 30s
       retries: 3
-
-  ###########################
-  # COMMON                  #
-  ###########################
-
+    logging: *default-logging
   xtm-composer:
-    image: filigran/xtm-composer:latest
+    image: filigran/xtm-composer:${XTM_COMPOSER_VERSION:-3.260825.0}
     platform: linux/amd64
     environment:
-      - MANAGER__ID=${XTM_COMPOSER_ID}
-      - "MANAGER__NAME=XTM Integrations Manager"
-      - MANAGER__CREDENTIALS_KEY_FILEPATH=/keys/private_key.pem
-      - OPENCTI__ENABLE=true
-      - OPENCTI__URL=http://opencti:8080
-      - OPENCTI__TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - OPENCTI__DAEMON__SELECTOR=docker
-      - OPENCTI__DAEMON__DOCKER__NETWORK_MODE=${COMPOSE_PROJECT_NAME}_default
+      MANAGER__ID: "${XTM_COMPOSER_ID}"
+      MANAGER__NAME: XTM Integrations Manager
+      MANAGER__CREDENTIALS_KEY_FILEPATH: "/keys/private_key.pem"
+      OPENCTI__ENABLE: 'true'
+      OPENCTI__URL: http://opencti:8080
+      OPENCTI__TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      OPENCTI__DAEMON__SELECTOR: docker
+      OPENCTI__DAEMON__DOCKER__NETWORK_MODE: "${OPENCTI_STACK_NAME:-opencti-fresh}_default"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - rsakeys:/keys:ro  # RSA key mounted as read-only
+    - "/var/run/docker.sock:/var/run/docker.sock"
+    - rsakeys:/keys:ro
     depends_on:
       rsa-key-generator:
         condition: service_healthy
@@ -114,43 +132,41 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    restart: always
-
-  ###########################
-  # OPENCTI                 #
-  ###########################
-  
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+    - composer
   opencti:
-    image: opencti/platform:latest
+    image: opencti/platform:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - NODE_OPTIONS=--max-old-space-size=8096
-      - APP__PORT=8080
-      - APP__BASE_URL=${OPENCTI_EXTERNAL_SCHEME}://${OPENCTI_HOST}:${OPENCTI_PORT}
-      - APP__ADMIN__EMAIL=${OPENCTI_ADMIN_EMAIL}
-      - APP__ADMIN__PASSWORD=${OPENCTI_ADMIN_PASSWORD}
-      - APP__ADMIN__TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - REDIS__HOSTNAME=redis
-      - REDIS__PORT=6379
-      - ELASTICSEARCH__URL=http://elasticsearch:9200
-      - ELASTICSEARCH__NUMBER_OF_REPLICAS=0
-      - MINIO__ENDPOINT=minio
-      - MINIO__PORT=9000
-      - MINIO__USE_SSL=false
-      - MINIO__ACCESS_KEY=${MINIO_ROOT_USER}
-      - MINIO__SECRET_KEY=${MINIO_ROOT_PASSWORD}
-      - RABBITMQ__HOSTNAME=rabbitmq
-      - RABBITMQ__PORT=5672
-      - RABBITMQ__PORT_MANAGEMENT=15672
-      - RABBITMQ__MANAGEMENT_SSL=false
-      - RABBITMQ__USERNAME=${RABBITMQ_DEFAULT_USER}
-      - RABBITMQ__PASSWORD=${RABBITMQ_DEFAULT_PASS}
-      - SMTP__HOSTNAME=${SMTP_HOSTNAME}
-      - SMTP__PORT=25
-      - PROVIDERS__LOCAL__STRATEGY=LocalStrategy
-      - APP__HEALTH_ACCESS_KEY=${OPENCTI_HEALTHCHECK_ACCESS_KEY}
-      - APP__ENCRYPTION_KEY=${OPENCTI_ENCRYPTION_KEY}
+      NODE_OPTIONS: "--max-old-space-size=${OPENCTI_NODE_MEMORY_MB:-8096}"
+      APP__PORT: '8080'
+      APP__BASE_URL: "${OPENCTI_PUBLIC_URL:-http://localhost:8080}"
+      APP__ADMIN__EMAIL: "${OPENCTI_ADMIN_EMAIL}"
+      APP__ADMIN__PASSWORD: "${OPENCTI_ADMIN_PASSWORD}"
+      APP__ADMIN__TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      APP__ENCRYPTION_KEY: "${OPENCTI_ENCRYPTION_KEY}"
+      REDIS__HOSTNAME: redis
+      REDIS__PORT: '6379'
+      ELASTICSEARCH__URL: http://elasticsearch:9200
+      ELASTICSEARCH__NUMBER_OF_REPLICAS: '0'
+      MINIO__ENDPOINT: minio
+      MINIO__PORT: '9000'
+      MINIO__USE_SSL: 'false'
+      MINIO__ACCESS_KEY: "${MINIO_ROOT_USER}"
+      MINIO__SECRET_KEY: "${MINIO_ROOT_PASSWORD}"
+      RABBITMQ__HOSTNAME: rabbitmq
+      RABBITMQ__PORT: '5672'
+      RABBITMQ__PORT_MANAGEMENT: '15672'
+      RABBITMQ__MANAGEMENT_SSL: 'false'
+      RABBITMQ__USERNAME: "${RABBITMQ_DEFAULT_USER}"
+      RABBITMQ__PASSWORD: "${RABBITMQ_DEFAULT_PASS}"
+      SMTP__HOSTNAME: "${SMTP_HOSTNAME}"
+      SMTP__PORT: '25'
+      PROVIDERS__LOCAL__STRATEGY: LocalStrategy
+      APP__HEALTH_ACCESS_KEY: "${OPENCTI_HEALTHCHECK_ACCESS_KEY}"
     ports:
-      - "${OPENCTI_PORT}:8080"
+    - "${OPENCTI_BIND_ADDRESS:-0.0.0.0}:${OPENCTI_PORT:-8080}:8080"
     depends_on:
       redis:
         condition: service_healthy
@@ -160,177 +176,186 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    restart: always
+    restart: unless-stopped
     healthcheck:
-      test:  ["CMD", "wget", "-qO-", "http://opencti:8080/health?health_access_key=${OPENCTI_HEALTHCHECK_ACCESS_KEY}"]
+      test:
+      - CMD
+      - wget
+      - "-qO-"
+      - http://opencti:8080/health?health_access_key=${OPENCTI_HEALTHCHECK_ACCESS_KEY}
       interval: 10s
       timeout: 5s
-      retries: 20
+      retries: 60
+      start_period: 120s
+    logging: *default-logging
   worker:
-    image: opencti/worker:latest
+    image: opencti/worker:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=http://opencti:8080
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
     depends_on:
       opencti:
         condition: service_healthy
     deploy:
       mode: replicated
-      replicas: 3
-    restart: always
-
-  ###########################
-  # OPENCTI CONNECTORS      #
-  ###########################
-
+      replicas: "${OPENCTI_WORKERS:-3}"
+    restart: unless-stopped
+    logging: *default-logging
   connector-export-file-stix:
-    image: opencti/connector-export-file-stix:latest
+    image: opencti/connector-export-file-stix:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=http://opencti:8080
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${CONNECTOR_EXPORT_FILE_STIX_ID} # Valid UUIDv4
-      - CONNECTOR_TYPE=INTERNAL_EXPORT_FILE
-      - CONNECTOR_NAME=ExportFileStix2
-      - CONNECTOR_SCOPE=application/json
-    restart: always
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_EXPORT_FILE_STIX_ID}"
+      CONNECTOR_TYPE: INTERNAL_EXPORT_FILE
+      CONNECTOR_NAME: ExportFileStix2
+      CONNECTOR_SCOPE: application/json
+    restart: unless-stopped
     depends_on:
       opencti:
         condition: service_healthy
+    logging: *default-logging
   connector-export-file-csv:
-    image: opencti/connector-export-file-csv:latest
+    image: opencti/connector-export-file-csv:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=http://opencti:8080
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${CONNECTOR_EXPORT_FILE_CSV_ID} # Valid UUIDv4
-      - CONNECTOR_TYPE=INTERNAL_EXPORT_FILE
-      - CONNECTOR_NAME=ExportFileCsv
-      - CONNECTOR_SCOPE=text/csv
-    restart: always
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_EXPORT_FILE_CSV_ID}"
+      CONNECTOR_TYPE: INTERNAL_EXPORT_FILE
+      CONNECTOR_NAME: ExportFileCsv
+      CONNECTOR_SCOPE: text/csv
+    restart: unless-stopped
     depends_on:
       opencti:
         condition: service_healthy
+    logging: *default-logging
   connector-export-file-txt:
-    image: opencti/connector-export-file-txt:latest
+    image: opencti/connector-export-file-txt:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=http://opencti:8080
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${CONNECTOR_EXPORT_FILE_TXT_ID} # Valid UUIDv4
-      - CONNECTOR_TYPE=INTERNAL_EXPORT_FILE
-      - CONNECTOR_NAME=ExportFileTxt
-      - CONNECTOR_SCOPE=text/plain
-    restart: always
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_EXPORT_FILE_TXT_ID}"
+      CONNECTOR_TYPE: INTERNAL_EXPORT_FILE
+      CONNECTOR_NAME: ExportFileTxt
+      CONNECTOR_SCOPE: text/plain
+    restart: unless-stopped
     depends_on:
       opencti:
         condition: service_healthy
+    logging: *default-logging
   connector-import-file-stix:
-    image: opencti/connector-import-file-stix:latest
+    image: opencti/connector-import-file-stix:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=http://opencti:8080
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${CONNECTOR_IMPORT_FILE_STIX_ID} # Valid UUIDv4
-      - CONNECTOR_TYPE=INTERNAL_IMPORT_FILE
-      - CONNECTOR_NAME=ImportFileStix
-      - CONNECTOR_VALIDATE_BEFORE_IMPORT=true # Validate any bundle before import
-      - CONNECTOR_SCOPE=application/json,text/xml
-      - CONNECTOR_AUTO=true # Enable/disable auto-import of file
-    restart: always
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_IMPORT_FILE_STIX_ID}"
+      CONNECTOR_TYPE: INTERNAL_IMPORT_FILE
+      CONNECTOR_NAME: ImportFileStix
+      CONNECTOR_VALIDATE_BEFORE_IMPORT: 'true'
+      CONNECTOR_SCOPE: application/json,text/xml
+      CONNECTOR_AUTO: 'true'
+    restart: unless-stopped
     depends_on:
       opencti:
         condition: service_healthy
+    logging: *default-logging
   connector-import-document:
-    image: opencti/connector-import-document:latest
+    image: opencti/connector-import-document:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=http://opencti:8080
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${CONNECTOR_IMPORT_DOCUMENT_ID} # Valid UUIDv4
-      - CONNECTOR_TYPE=INTERNAL_IMPORT_FILE
-      - CONNECTOR_NAME=ImportDocument
-      - CONNECTOR_VALIDATE_BEFORE_IMPORT=true # Validate any bundle before import
-      - CONNECTOR_SCOPE=application/pdf,text/plain,text/html
-      - CONNECTOR_AUTO=true # Enable/disable auto-import of file
-      - CONNECTOR_ONLY_CONTEXTUAL=false # Only extract data related to an entity (a report, a threat actor, etc.)
-      - IMPORT_DOCUMENT_CREATE_INDICATOR=true
-    restart: always
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_IMPORT_DOCUMENT_ID}"
+      CONNECTOR_TYPE: INTERNAL_IMPORT_FILE
+      CONNECTOR_NAME: ImportDocument
+      CONNECTOR_VALIDATE_BEFORE_IMPORT: 'true'
+      CONNECTOR_SCOPE: application/pdf,text/plain,text/html
+      CONNECTOR_AUTO: 'true'
+      CONNECTOR_ONLY_CONTEXTUAL: 'false'
+      IMPORT_DOCUMENT_CREATE_INDICATOR: 'true'
+    restart: unless-stopped
     depends_on:
       opencti:
         condition: service_healthy
+    logging: *default-logging
   connector-import-file-yara:
-    image: opencti/connector-import-file-yara:latest
+    image: opencti/connector-import-file-yara:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=http://opencti:8080
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${CONNECTOR_IMPORT_FILE_YARA_ID} # Valid UUIDv4
-      - CONNECTOR_NAME=ImportFileYARA
-      - CONNECTOR_VALIDATE_BEFORE_IMPORT=true # Validate any bundle before import
-      - CONNECTOR_SCOPE=text/yara+plain
-      - CONNECTOR_AUTO=false # Enable/disable auto-import of file
-      - YARA_IMPORT_FILE_SPLIT_RULES=true
-    restart: always
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_IMPORT_FILE_YARA_ID}"
+      CONNECTOR_NAME: ImportFileYARA
+      CONNECTOR_VALIDATE_BEFORE_IMPORT: 'true'
+      CONNECTOR_SCOPE: text/yara+plain
+      CONNECTOR_AUTO: 'false'
+      YARA_IMPORT_FILE_SPLIT_RULES: 'true'
+    restart: unless-stopped
     depends_on:
       opencti:
         condition: service_healthy
+    logging: *default-logging
   connector-analysis:
-    image: opencti/connector-import-document:latest
+    image: opencti/connector-import-document:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=http://opencti:8080
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${CONNECTOR_ANALYSIS_ID} # Valid UUIDv4
-      - CONNECTOR_TYPE=INTERNAL_ANALYSIS
-      - CONNECTOR_NAME=ImportDocumentAnalysis
-      - CONNECTOR_VALIDATE_BEFORE_IMPORT=false # Validate any bundle before import
-      - CONNECTOR_SCOPE=application/pdf,text/plain,text/html
-      - CONNECTOR_AUTO=true # Enable/disable auto-import of file
-      - CONNECTOR_ONLY_CONTEXTUAL=false # Only extract data related to an entity (a report, a threat actor, etc.)
-    restart: always
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_ANALYSIS_ID}"
+      CONNECTOR_TYPE: INTERNAL_ANALYSIS
+      CONNECTOR_NAME: ImportDocumentAnalysis
+      CONNECTOR_VALIDATE_BEFORE_IMPORT: 'false'
+      CONNECTOR_SCOPE: application/pdf,text/plain,text/html
+      CONNECTOR_AUTO: 'true'
+      CONNECTOR_ONLY_CONTEXTUAL: 'false'
+    restart: unless-stopped
     depends_on:
       opencti:
         condition: service_healthy
+    logging: *default-logging
   connector-import-external-reference:
-    image: opencti/connector-import-external-reference:latest
+    image: opencti/connector-import-external-reference:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=http://opencti:8080
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${CONNECTOR_IMPORT_EXTERNAL_REFERENCE_ID}
-      - CONNECTOR_NAME=ImportExternalReference
-    restart: always
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_IMPORT_EXTERNAL_REFERENCE_ID}"
+      CONNECTOR_NAME: ImportExternalReference
+    restart: unless-stopped
     depends_on:
       opencti:
-        condition: service_healthy          
-
-  ###########################
-  # OPENCTI DEFAULT DATA    #
-  ###########################
-
+        condition: service_healthy
+    logging: *default-logging
   connector-opencti:
-    image: opencti/connector-opencti:latest
+    image: opencti/connector-opencti:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=http://opencti:8080
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${CONNECTOR_OPENCTI_ID}
-      - "CONNECTOR_NAME=OpenCTI Datasets"
-      - CONNECTOR_SCOPE=marking-definition,identity,location
-      - CONNECTOR_AUTO_CREATE_SERVICE_ACCOUNT=true
-      - CONNECTOR_AUTO_CREATE_SERVICE_ACCOUNT_CONFIDENCE_LEVEL=100
-    restart: always
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_OPENCTI_ID}"
+      CONNECTOR_NAME: OpenCTI Datasets
+      CONNECTOR_SCOPE: marking-definition,identity,location
+      CONNECTOR_AUTO_CREATE_SERVICE_ACCOUNT: 'true'
+      CONNECTOR_AUTO_CREATE_SERVICE_ACCOUNT_CONFIDENCE_LEVEL: '100'
+    restart: unless-stopped
     depends_on:
       opencti:
-        condition: service_healthy      
+        condition: service_healthy
+    logging: *default-logging
   connector-mitre:
-    image: opencti/connector-mitre:latest
+    image: opencti/connector-mitre:${OPENCTI_VERSION:-7.261002.0}
     environment:
-      - OPENCTI_URL=http://opencti:8080
-      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
-      - CONNECTOR_ID=${CONNECTOR_MITRE_ID}
-      - CONNECTOR_AUTO_CREATE_SERVICE_ACCOUNT=true
-      - CONNECTOR_AUTO_CREATE_SERVICE_ACCOUNT_CONFIDENCE_LEVEL=75      
-    restart: always
+      OPENCTI_URL: http://opencti:8080
+      OPENCTI_TOKEN: "${OPENCTI_ADMIN_TOKEN:?Run python3 scripts/init-env.py first}"
+      CONNECTOR_ID: "${CONNECTOR_MITRE_ID}"
+      CONNECTOR_AUTO_CREATE_SERVICE_ACCOUNT: 'true'
+      CONNECTOR_AUTO_CREATE_SERVICE_ACCOUNT_CONFIDENCE_LEVEL: '75'
+    restart: unless-stopped
     depends_on:
       opencti:
-        condition: service_healthy      
-
+        condition: service_healthy
+    logging: *default-logging
 volumes:
   esdata:
   s3data:
   redisdata:
   amqpdata:
   rsakeys:
+networks:
+  default:
+    name: "${OPENCTI_STACK_NAME:-opencti-fresh}_default"
